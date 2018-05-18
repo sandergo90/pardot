@@ -2,9 +2,9 @@
 
 namespace HGG\Pardot\ResponseHandler;
 
-use HGG\Pardot\Exception\RuntimeException;
-use HGG\Pardot\Exception\InvalidArgumentException;
 use HGG\Pardot\Exception\AuthenticationErrorException;
+use HGG\Pardot\Exception\InvalidArgumentException;
+use HGG\Pardot\Exception\RuntimeException;
 
 /**
  * Parse a json response document into the expected data structure and handle
@@ -28,26 +28,26 @@ class JsonResponseHandler extends AbstractResponseHandler
         $object = $this->objectNameToKey($this->objectName);
 
         if ('ok' !== $this->data['@attributes']['stat']) {
-            $errorCode = (int) $this->data['@attributes']['err_code'];
+            $errorCode = (int)$this->data['@attributes']['err_code'];
             $errorMessage = $this->data['err'];
 
-            if (in_array($errorCode, array(1, 15))) {
-                throw new AuthenticationErrorException($errorMessage, $errorCode);
-            } else {
-                throw new RuntimeException($errorMessage, $errorCode);
+            if (\in_array($errorCode, [1, 15])) {
+                throw new AuthenticationErrorException($errorMessage[0], $errorCode);
             }
+
+            throw new RuntimeException($errorMessage[0], $errorCode);
+        }
+
+        if (array_key_exists('result', $this->data)) {
+            $this->parseMultiRecordResult($object, $this->data);
+        } elseif (array_key_exists($object, $this->data)) {
+            $this->parseSingleRecordResult($object, $this->data);
+        } elseif (array_key_exists('api_key', $this->data)) {
+            $this->resultCount = 0;
+            $this->result = $this->data['api_key'];
         } else {
-            if (array_key_exists('result', $this->data)) {
-                $this->parseMultiRecordResult($object, $this->data);
-            } elseif (array_key_exists($object, $this->data)) {
-                $this->parseSingleRecordResult($object, $this->data);
-            } elseif (array_key_exists('api_key', $this->data)) {
-                $this->resultCount = 0;
-                $this->result = $this->data['api_key'];
-            } else {
-                $asString = true;
-                throw new RuntimeException('Unknown response format: '.$this->responseObj->getBoby($asString));
-            }
+            $asString = true;
+            throw new RuntimeException('Unknown response format');
         }
     }
 
@@ -63,14 +63,14 @@ class JsonResponseHandler extends AbstractResponseHandler
      */
     protected function parseMultiRecordResult($objectName, $data)
     {
-        $this->resultCount = (int) $data['result']['total_results'];
+        $this->resultCount = (int)$data['result']['total_results'];
 
         if (0 === $this->resultCount) {
-            $this->result = array();
+            $this->result = [];
         } else {
             if (array_key_exists($objectName, $data['result'])) {
                 if ($this->resultHasOnlyOneRecord($objectName, $data)) {
-                    $this->result = array($data['result'][$objectName]);
+                    $this->result = [$data['result'][$objectName]];
                 } else {
                     $this->result = $data['result'][$objectName];
                 }
@@ -142,14 +142,14 @@ class JsonResponseHandler extends AbstractResponseHandler
         $json = json_encode($data);
 
         if (JSON_ERROR_NONE !== json_last_error()) {
-            throw new RuntimeException('Unable to encode previously decoded data back to JSON. Json error: ' . json_last_error());
+            throw new RuntimeException('Unable to encode previously decoded data back to JSON. Json error: '.json_last_error());
         }
 
         $asString = false;
         $objData = json_decode($json, false);
 
         if (JSON_ERROR_NONE !== json_last_error()) {
-            throw new RuntimeException('Unable to decode json. Json error: ' . json_last_error());
+            throw new RuntimeException('Unable to decode json. Json error: '.json_last_error());
         }
 
         // At this point we have already estableshed that there exists a
@@ -166,14 +166,14 @@ class JsonResponseHandler extends AbstractResponseHandler
      * @param string $object
      *
      * @access protected
-     * @return void
+     * @return mixed
      */
     protected function objectNameToKey($object)
     {
-        $map = array(
+        $map = [
             'visitorActivity' => 'visitor_activity',
             'listMembership' => 'list_membership',
-        );
+        ];
 
         if (array_key_exists($object, $map)) {
             return $map[$object];

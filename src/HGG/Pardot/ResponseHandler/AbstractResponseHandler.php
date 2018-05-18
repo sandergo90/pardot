@@ -77,7 +77,7 @@ abstract class AbstractResponseHandler
      * getResultCount
      *
      * @access public
-     * @return void
+     * @return int
      */
     public function getResultCount()
     {

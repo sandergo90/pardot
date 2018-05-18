@@ -2,20 +2,21 @@
 
 namespace HGG\Pardot;
 
+use Guzzle\Http\Client;
+use Guzzle\Http\Exception\GuzzleException;
+use Guzzle\Http\Message\MessageInterface;
+use Guzzle\Http\Message\Response;
+use Guzzle\Plugin\Backoff\BackoffPlugin;
+use HGG\ParameterValidator\Validator\ArrayValidator;
+use HGG\Pardot\Exception\AuthenticationErrorException;
+use HGG\Pardot\Exception\InvalidArgumentException;
+use HGG\Pardot\Exception\RequestException;
+use HGG\Pardot\Exception\RuntimeException;
+use HGG\Pardot\ResponseHandler\AbstractResponseHandler;
 use HGG\Pardot\ResponseHandler\JsonResponseHandler;
 use HGG\Pardot\ResponseHandler\XmlResponseHandler;
-use HGG\Pardot\Exception\ExceptionInterface;
-use HGG\Pardot\Exception\InvalidArgumentException;
-use HGG\Pardot\Exception\RuntimeException;
-use HGG\Pardot\Exception\AuthenticationErrorException;
-use HGG\Pardot\Exception\RequestException;
-
-use Guzzle\Http\Client;
-use Guzzle\Plugin\Backoff\BackoffPlugin;
-use Guzzle\Http\Exception\BadResponseException;
-use Guzzle\Http\Exception\GuzzleException;
-use HGG\ParameterValidator\Validator\ArrayValidator;
 use Icecave\Collections\Map;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 /**
  * A convenience class that takes care of the various task that are necessary
@@ -67,7 +68,7 @@ class Connector
      * @var string
      * @access protected
      */
-    protected $apiKey  = null;
+    protected $apiKey = null;
 
     /**
      * The API base URL
@@ -94,7 +95,7 @@ class Connector
      * @var string
      * @access protected
      */
-    protected $output  = 'full';
+    protected $output = 'full';
 
     /**
      * The response format - json/xml
@@ -102,7 +103,7 @@ class Connector
      * @var string
      * @access protected
      */
-    protected $format  = 'json';
+    protected $format = 'json';
 
     /**
      * totalResults
@@ -142,27 +143,27 @@ class Connector
     public function __construct(
         array $parameters,
         \Guzzle\Http\Client $httpClient = null,
-        $httpClientOptions = array('timeout' => 10))
-    {
+        $httpClientOptions = ['timeout' => 10]
+    ) {
         try {
-            $required = array('email', 'user-key', 'password');
-            $optional = array('base-url', 'version', 'output', 'format', 'api-key');
+            $required = ['email', 'user-key', 'password'];
+            $optional = ['base-url', 'version', 'output', 'format', 'api-key'];
             ArrayValidator::contains(array_keys($parameters), $required, $optional, false);
             $map = new Map($parameters);
 
             $this->httpClientOptions = $httpClientOptions;
 
-            $this->email    = $map->get('email');
-            $this->userKey  = $map->get('user-key');
+            $this->email = $map->get('email');
+            $this->userKey = $map->get('user-key');
             $this->password = $map->get('password');
-            $this->baseUrl  = $map->getWithDefault('base-url', $this->baseUrl);
-            $this->version  = $map->getWithDefault('version', $this->version);
-            $this->output   = $map->getWithDefault('output', $this->output);
-            $this->format   = $map->getWithDefault('format', $this->format);
-            $this->apiKey   = $map->getWithDefault('api-key', null);
+            $this->baseUrl = $map->getWithDefault('base-url', $this->baseUrl);
+            $this->version = $map->getWithDefault('version', $this->version);
+            $this->output = $map->getWithDefault('output', $this->output);
+            $this->format = $map->getWithDefault('format', $this->format);
+            $this->apiKey = $map->getWithDefault('api-key', null);
 
             $this->client = (null === $httpClient) ? $this->getClient() : $httpClient;
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
             throw new InvalidArgumentException($e->getMessage(), 0, $e);
         }
     }
@@ -175,18 +176,18 @@ class Connector
      *
      * @access public
      *
-     * @return void
+     * @return string
      */
     public function authenticate()
     {
         $object = 'login';
         $url = sprintf('/api/%s/version/%s', $object, $this->version);
-        $parameters = array(
-            'email'    => $this->email,
+        $parameters = [
+            'email' => $this->email,
             'password' => $this->password,
             'user_key' => $this->userKey,
-            'format'   => $this->format
-        );
+            'format' => $this->format,
+        ];
 
         $this->apiKey = $this->doPost($object, $url, $parameters);
 
@@ -238,8 +239,8 @@ class Connector
      *                          format=XML it will either return a single
      *                          SimpleXMLElement or an array of SimpleXmlElements
      *
-     * @throws                  HGG\Pardot\RequestException
-     *                          HGG\Pardot\RuntimeException
+     * @throws                  RequestException
+     *                          RuntimeException
      */
     public function post($object, $operation, $parameters)
     {
@@ -249,12 +250,12 @@ class Connector
 
         $url = sprintf('/api/%s/version/%s/do/%s', $object, $this->version, $operation);
         $parameters = array_merge(
-            array(
-                'api_key'  => $this->apiKey,
+            [
+                'api_key' => $this->apiKey,
                 'user_key' => $this->userKey,
-                'format'   => $this->format,
-                'output'   => $this->output
-            ),
+                'format' => $this->format,
+                'output' => $this->output,
+            ],
             $parameters
         );
 
@@ -304,7 +305,7 @@ class Connector
      */
     protected function getClient()
     {
-        $retries   = 5;
+        $retries = 5;
         $httpCodes = null;
         $curlCodes = null;
 
@@ -330,8 +331,8 @@ class Connector
      *                          format=XML it will either return a single
      *                          SimpleXMLElement or an array of SimpleXmlElements
      *
-     * @throws                  HGG\Pardot\RequestException
-     *                          HGG\Pardot\RuntimeException
+     * @throws                  RequestException
+     * @throws                  RuntimeException
      */
     protected function doPost($object, $url, $parameters)
     {
@@ -341,20 +342,21 @@ class Connector
         $options = $this->httpClientOptions;
 
         try {
+            /** @var Response $httpResponse */
             $httpResponse = $this->client->post($url, $headers, $postBody, $options)
-                ->setHeader('Content-Type', 'application/x-www-form-urlencoded')
-                ->setBody(http_build_query($parameters))
-                ->send();
+                                         ->setHeader('Content-Type', 'application/x-www-form-urlencoded')
+                                         ->setBody(http_build_query($parameters))
+                                         ->send();
         } catch (HttpException $e) {
-            $msg = sprintf('%s. Http status code [%s]', $e->getMessage(), $e->getResponse()->getStatusCode());
+            $msg = sprintf('%s. Http status code [%s]', $e->getMessage(), $e->getStatusCode());
 
             throw new RequestException($msg, 0, $e, $url, $parameters);
         } catch (\Exception $e) {
             throw new RuntimeException($e->getMessage(), 0, $e, $url, $parameters);
         }
 
-        if (204 == $httpResponse->getStatusCode()) {
-            return array();
+        if (204 === $httpResponse->getStatusCode()) {
+            return [];
         }
 
         try {
@@ -363,11 +365,6 @@ class Connector
             $this->totalResults = $handler->getResultCount();
 
             return $result;
-        } catch (ExceptionInterface $e) {
-            $e->setUrl($url);
-            $e->setParameters($parameters);
-
-            throw $e;
         } catch (\Exception $e) {
             throw new RuntimeException($e->getMessage(), 0, $e, $url, $parameters);
         }
@@ -377,26 +374,26 @@ class Connector
      * Instantiate the appropriate Response document handler based on the
      * format
      *
-     * @param Guzzle\Http|Message|Response $response The Guzzle Response object
-     * @param string                       $object   The name of the pardot obj
+     * @param MessageInterface|Response $response The Guzzle Response object
+     * @param string                    $object   The name of the pardot obj
      *
      * @access protected
      *
-     * @return HGG\Pardot\AbstractResponseHanler
+     * @return AbstractResponseHandler
      */
     protected function getHandler($response, $object)
     {
         $handler = null;
 
         switch ($this->format) {
-        case 'json':
-            $this->rawResponse = $response->json();
-            $handler = new JsonResponseHandler($this->rawResponse, $object);
-            break;
-        case 'xml':
-            $this->rawResponse = $response->xml();
-            $handler = new XmlResponseHandler($this->rawResponse, $object);
-            break;
+            case 'json':
+                $this->rawResponse = $response->json();
+                $handler = new JsonResponseHandler($this->rawResponse, $object);
+                break;
+            case 'xml':
+                $this->rawResponse = $response->xml();
+                $handler = new XmlResponseHandler($this->rawResponse, $object);
+                break;
         }
 
         return $handler;
